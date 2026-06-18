@@ -1,15 +1,17 @@
+[🇻🇳 Bản tiếng Việt](README.vi.md)
+
 # MoodTune
 
-Gợi ý nhạc theo cảm xúc: người dùng nhập một đoạn văn bản, backend dùng một AI engine (rule-based lexicon + MLP có self-attention, học online từ feedback) để đoán cảm xúc, rồi tìm nhạc phù hợp qua Jamendo API (free, không cần đăng nhập).
+Mood-based music recommendation: the user types a piece of text, the backend uses an AI engine (rule-based lexicon + a self-attention MLP that learns online from feedback) to infer the emotion, then looks up matching tracks via the Jamendo API (free, no login required).
 
-## Cấu trúc
+## Structure
 
-- `backend/` — Flask API (Python). Engine cảm xúc (`emotion_mlp.py`, `lexicon.py`), Thompson Sampling bandit để học gu nhạc (`bandit.py`), tìm nhạc Jamendo + audio feature analysis (`audio_features.py`), entrypoint `app.py`.
-- `frontend/` — single-page app (HTML/CSS/JS thuần, không build step) trong `index.html`.
+- `backend/` — Flask API (Python). Emotion engine (`emotion_mlp.py`, `lexicon.py`), a Thompson Sampling bandit that learns music taste (`bandit.py`), Jamendo track lookup + audio feature analysis (`audio_features.py`), entrypoint `app.py`.
+- `frontend/` — single-page app (plain HTML/CSS/JS, no build step) in `index.html`.
 
-## Chạy backend
+## Running the backend
 
-Yêu cầu Python 3.x.
+Requires Python 3.x.
 
 ```bash
 cd backend
@@ -17,28 +19,28 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Backend chạy ở `http://localhost:5005`, API base path là `/api` (xem `/api/health` để kiểm tra).
+The backend runs at `http://localhost:5005`, with API base path `/api` (check `/api/health` to verify).
 
-Biến môi trường (đều có giá trị mặc định, không bắt buộc set khi chạy local):
+Environment variables (all have defaults, none are required for local runs):
 
-| Biến | Mặc định | Ý nghĩa |
+| Variable | Default | Meaning |
 | --- | --- | --- |
-| `MOODTUNE_SECRET_KEY` | `moodtune_secret_2024` | Flask `secret_key`. Nên set giá trị riêng khi deploy thật. |
-| `MOODTUNE_FRONTEND` | `https://anhtaictv.me` | Origin của frontend, dùng để cấu hình CORS. |
-| `JAMENDO_CLIENT_ID` | `cf31dbfd` | Client ID gọi Jamendo API. |
+| `MOODTUNE_SECRET_KEY` | `moodtune_secret_2024` | Flask `secret_key`. Set your own value for production deployments. |
+| `MOODTUNE_FRONTEND` | `https://anhtaictv.me` | Frontend origin, used to configure CORS. |
+| `JAMENDO_CLIENT_ID` | `cf31dbfd` | Client ID used to call the Jamendo API. |
 
-Để chạy bằng pm2 (production), dùng config có sẵn:
+To run with pm2 (production), use the provided config:
 
 ```bash
 pm2 start backend/ecosystem.config.js
 ```
 
-## Chạy frontend
+## Running the frontend
 
-Mở trực tiếp `frontend/index.html` bằng trình duyệt (hoặc qua `http://localhost:5500` bằng static server tuỳ ý). Khi chạy ở `localhost`/`file://`, frontend tự gọi thẳng backend tại `http://localhost:5005/api` — không cần cấu hình thêm.
+Open `frontend/index.html` directly in a browser (or serve it via any static server, e.g. `http://localhost:5500`). When running on `localhost`/`file://`, the frontend automatically calls the backend directly at `http://localhost:5005/api` — no extra configuration needed.
 
-Khi deploy production, frontend gọi `/api` (relative path), nên cần một reverse proxy (IIS/Nginx) trỏ `/api` sang backend Flask. Cấu hình IIS mẫu xem `frontend/web.config`.
+In production, the frontend calls `/api` (a relative path), so you need a reverse proxy (IIS/Nginx) routing `/api` to the Flask backend. See `frontend/web.config` for a sample IIS configuration.
 
-## Dữ liệu model
+## Model data
 
-`weights.npz`, `weights_meta.json`, `weights_replay.json`, `dynamic_vocab.json` trong `backend/` là trạng thái đã học của model (vocab, trọng số MLP, replay buffer cho online learning). `feedback_log.jsonl` lưu lịch sử predict/feedback/hành vi nghe nhạc, dùng để bandit học gu nhạc và thống kê `/api/stats`.
+`weights.npz`, `weights_meta.json`, `weights_replay.json`, and `dynamic_vocab.json` in `backend/` hold the model's learned state (vocabulary, MLP weights, replay buffer for online learning). `feedback_log.jsonl` stores the history of predictions/feedback/listening behavior, used by the bandit to learn music taste and by the `/api/stats` endpoint.
