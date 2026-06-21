@@ -1,1 +1,1 @@
-{"feedback_count": 2457, "alpha": 0.3580096115338406, "arch": "attention_v1", "embed_dim": 32, "vocab_size": 3173, "l2": 0.0005}
+{"feedback_count": 3455, "alpha": 0.35572246065808294, "arch": "attention_v1", "embed_dim": 32, "vocab_size": 4120, "l2": 0.0005}

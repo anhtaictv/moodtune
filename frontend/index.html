@@ -773,6 +773,7 @@ async function pickLocalFolder() {
 
 async function indexLocalFiles(names) {
   const items = names.map(n => n.replace(/\.[^/.]+$/, '').replace(/[_\-]/g, ' '));
+  
   try {
     const data = await apiFetch(API + '/predict/batch', {
       method: 'POST', headers: {'Content-Type':'application/json'},
