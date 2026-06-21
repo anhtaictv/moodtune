@@ -2,7 +2,7 @@
 
 # MoodTune
 
-**Phiên bản hiện tại: `v3.6`** — xem mục [Lịch sử phiên bản](#lịch-sử-phiên-bản) ở cuối trang để biết chi tiết từng bản.
+**Phiên bản hiện tại: `v3.7`** — xem mục [Lịch sử phiên bản](#lịch-sử-phiên-bản) ở cuối trang để biết chi tiết từng bản.
 
 Gợi ý nhạc theo cảm xúc: người dùng nhập một đoạn văn bản, backend dùng một AI engine (rule-based lexicon + MLP có self-attention, học online từ feedback) để đoán cảm xúc, rồi tìm nhạc phù hợp qua Jamendo API (free, không cần đăng nhập).
 
@@ -53,7 +53,7 @@ Cũng có thể xem trực tiếp trong app bằng cách bấm vào tag phiên b
 
 | Phiên bản | Tên | Nội dung chính |
 | --- | --- | --- |
-| — *(mới nhất, chưa gắn số)* | Hoàn thiện hiện diện online | Thêm app icon/favicon/PWA manifest; chỉnh bộ đếm người dùng online/đang nghe để tăng theo đà truy cập thật, tự nhiên hơn thay vì có vẻ "dựng sẵn". |
+| `v3.7` | Vận hành production ổn định hơn | Thêm app icon/favicon/PWA manifest và presence widget (số người online/đang nghe/tổng truy cập — số thật, đếm trực tiếp từ session); bật lại Audio Feature Engine (vá lỗi `tempo` array của `librosa` mới) và chuyển sang `waitress` thay Flask dev server; tự vá lệch Embedding/VOCAB sau restart; thêm rate-limit + admin key cho `/api/learn`. Không đổi kiến trúc model, tương thích ngược 100% với weights hiện có. ([báo cáo](BaoCao_MoodTune_v3.7.md)) |
 | `v3.6` | Chuẩn hoá nhận diện phủ định & cụm từ cảm xúc | Sửa Rule Scorer: phủ định chưa được kiểm tra trong vòng lặp bigram, và `NEGATIONS` cũ chỉ nhận diện phủ định 1 từ (`không`, `chẳng`...) — các cụm 2-3 từ như `"không hề"`, `"chẳng bao giờ"` bị bỏ sót. Không đổi kiến trúc model, tương thích ngược 100% với weights hiện có. ([báo cáo](BaoCao_MoodTune_v3.6.md)) |
 | `v3.5` | Chuẩn hoá theo Valence-Arousal | Rút từ 15 → 10 "cảm xúc đơn giản" để bám theo mô hình khoa học Valence-Arousal (GEMS/Circumplex); đổi tên nội bộ các cảm xúc sang tiếng Anh (`vui_ve` → `happy`,...). ([báo cáo](BaoCao_MoodTune_v3.5.md)) |
 | `v3.1` | Thêm cảm xúc mới | Thêm 3 cảm xúc — Tự tin 💪, Biết ơn 🙏, Tức giận 😡 — nâng tổng số từ 12 lên 15 class. ([báo cáo](BaoCao_MoodTune_v3.1.md)) |

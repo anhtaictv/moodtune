@@ -219,7 +219,7 @@ audio{width:100%;height:40px}
 
 <header>
   <div>
-    <div class="logo"><img src="logo.png" alt="MoodTune" class="logo-icon"><span class="logo-text">Mood<em>Tune</em></span> <span class="version-tag" onclick="showVersions()" title="Xem lịch sử phiên bản">v3.6</span></div>
+    <div class="logo"><img src="logo.png" alt="MoodTune" class="logo-icon"><span class="logo-text">Mood<em>Tune</em></span> <span class="version-tag" onclick="showVersions()" title="Xem lịch sử phiên bản">v3.7</span></div>
     <div class="sub">// AI CẢM XÚC TỰ XÂY · SELF-ATTENTION · JAMENDO</div>
   </div>
   <div class="header-actions">
@@ -231,7 +231,7 @@ audio{width:100%;height:40px}
 <div class="modal-overlay" id="about-overlay" onclick="if(event.target===this) hideAbout()">
   <div class="modal-box">
     <h2>Mood<em>Tune</em></h2>
-    <div class="modal-version">Phiên bản v3.6 — 10 cảm xúc · RLUF Bandit · Knowledge Graph · Self-Attention · Jamendo</div>
+    <div class="modal-version">Phiên bản v3.7 — 10 cảm xúc · RLUF Bandit · Knowledge Graph · Self-Attention · Jamendo</div>
     <p>Nội dung giới thiệu chi tiết sẽ được cập nhật sau.</p>
     <div class="team-list">
       <div class="team-member"><span>Tạ Anh Tài</span><span class="team-role">Nhóm trưởng</span></div>
@@ -249,7 +249,11 @@ audio{width:100%;height:40px}
     <div class="modal-version">MoodTune — Changelog</div>
     <div class="version-list">
       <div class="version-item current">
-        <div class="version-item-head"><span class="version-name">v3.6 — Chuẩn hoá nhận diện phủ định & cụm từ cảm xúc</span><span class="version-tag-sm">hiện tại</span></div>
+        <div class="version-item-head"><span class="version-name">v3.7 — Vận hành production ổn định hơn</span><span class="version-tag-sm">hiện tại</span></div>
+        <div class="version-desc">Thêm app icon/favicon/PWA manifest và <b>presence widget</b> hiển thị số người đang online/đang nghe/tổng lượt truy cập — số thật, đếm trực tiếp từ session đang hoạt động. Bật lại <b>Audio Feature Engine</b> (vá lỗi <code>tempo</code> trả về dạng array của bản <code>librosa</code> mới) và chuyển sang <b>waitress</b> thay Flask dev server. Tự vá lệch Embedding/VOCAB sau restart, và thêm rate-limit + admin key cho <code>/api/learn</code> để chặn spam đầu độc model online learning chung.</div>
+      </div>
+      <div class="version-item">
+        <div class="version-item-head"><span class="version-name">v3.6 — Chuẩn hoá nhận diện phủ định & cụm từ cảm xúc</span></div>
         <div class="version-desc">Sửa rule scorer nhận diện phủ định tiếng Việt sai/thiếu: hỗ trợ phủ định <b>nhiều từ</b> ("không hề", "chẳng bao giờ"...), và áp dụng phủ định cho cả <b>cụm 2 từ (bigram)</b> — trước đây chỉ từ đơn mới được xét, nên "không tập trung" vẫn bị tính điểm dương cho "Tập trung". Mở rộng vocab động: cụm từ cảm xúc mới học được từ feedback giờ tự thêm vào từ điển (<code>dynamic_lexicon.json</code>) để rule scorer học được ngay, không chỉ riêng phần MLP embedding như trước.</div>
       </div>
       <div class="version-item">

@@ -2,7 +2,7 @@
 
 # MoodTune
 
-**Current version: `v3.6`** — see [Version history](#version-history) below for the full changelog.
+**Current version: `v3.7`** — see [Version history](#version-history) below for the full changelog.
 
 Mood-based music recommendation: the user types a piece of text, the backend uses an AI engine (rule-based lexicon + a self-attention MLP that learns online from feedback) to infer the emotion, then looks up matching tracks via the Jamendo API (free, no login required).
 
@@ -53,7 +53,7 @@ Also viewable in the app itself by clicking the version tag next to the logo. Ea
 
 | Version | Name | Highlights |
 | --- | --- | --- |
-| — *(latest, untagged)* | Online presence polish | Added app icon/favicon/PWA manifest; tuned the online/listening user counter to scale organically with real traffic instead of feeling scripted. |
+| `v3.7` | Production reliability pass | Added the app icon/favicon/PWA manifest and a presence widget (online/listening/total visits — real counts straight from active sessions); re-enabled the audio feature engine (fixed a `tempo`-as-array bug from a newer `librosa`) and switched from the Flask dev server to `waitress`; auto-heals an Embedding/VOCAB size mismatch after restarts; added rate-limiting + an admin-key bypass for `/api/learn`. No architecture change, fully backward-compatible with existing weights. ([report](BaoCao_MoodTune_v3.7.md)) |
 | `v3.6` | Vietnamese negation & phrase fixes | Fixed the rule scorer: negation wasn't checked inside bigrams, and only single-word negations (`không`, `chẳng`...) were recognized — multi-word forms like `"không hề"`, `"chẳng bao giờ"` slipped through. No architecture change, fully backward-compatible with existing weights. ([report](BaoCao_MoodTune_v3.6.md)) |
 | `v3.5` | Valence-Arousal normalization | Reduced 15 → 10 emotion classes to align with the Valence-Arousal (GEMS/Circumplex) model; renamed internal emotion keys to English (`vui_ve` → `happy`, etc.). ([report](BaoCao_MoodTune_v3.5.md)) |
 | `v3.1` | New emotions | Added 3 emotions — confident 💪, grateful 🙏, angry 😡 — bringing the total from 12 to 15 classes. ([report](BaoCao_MoodTune_v3.1.md)) |

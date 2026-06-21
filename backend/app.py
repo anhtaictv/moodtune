@@ -208,34 +208,7 @@ PRESENCE_TIMEOUT  = 40   # giây không ping → coi như đã rời trang
 
 presence_lock     = threading.Lock()
 online_sessions   = {}   # session_id -> {"last_seen": ts, "listening": bool}
-
-# Baseline "giả lập" để online/listening luôn trông tự nhiên dù traffic thật
-# thấp. Số hiển thị = baseline + số thật, nên khi có người ghé/bấm nghe nhạc
-# thật, số sẽ nhảy đúng +1 (không bị baseline che mất). Baseline trôi nhẹ
-# theo thời gian (random walk) thay vì đứng yên hoặc nhảy số đột ngột.
-# "listening" baseline = "online" baseline trừ đi gap. Trang chỉ để nghe
-# nhạc nên đa số người vào là bấm nghe luôn → gap thường là 0 (online =
-# listening), chỉ đôi lúc lệch 1-2 (người đang load/lướt mà chưa bấm nghe).
-FAKE_ONLINE_RANGE = (10, 30)
-FAKE_GAP_CHOICES  = [0, 0, 0, 1, 1, 2]
-FAKE_TICK_SECONDS = 8
-fake_stats_lock = threading.Lock()
-fake_stats = {
-    "online":    random.randint(*FAKE_ONLINE_RANGE),
-    "gap":       random.choice(FAKE_GAP_CHOICES),
-    "last_tick": 0.0,
-}
-
-def _tick_fake_stats():
-    now = time.time()
-    with fake_stats_lock:
-        if now - fake_stats["last_tick"] < FAKE_TICK_SECONDS:
-            return
-        fake_stats["last_tick"] = now
-        lo, hi = FAKE_ONLINE_RANGE
-        fake_stats["online"] = max(lo, min(hi, fake_stats["online"] + random.randint(-2, 2)))
-        if random.random() < 0.3:
-            fake_stats["gap"] = random.choice(FAKE_GAP_CHOICES)
+counted_sessions  = set()  # session_id đã được tính vào tổng lượt truy cập
 
 def _load_visit_total():
     if os.path.exists(VISIT_STATS_PATH):
@@ -251,12 +224,6 @@ def _save_visit_total(total):
         json.dump({"total_visits": total}, f)
 
 visit_total = _load_visit_total()
-
-# Tổng lượt truy cập tăng theo mức tăng của số online hiển thị (thật + giả
-# lập gộp lại) — online tăng bao nhiêu thì cộng bấy nhiêu vào tổng, online
-# giảm thì không trừ và không cộng. Nhờ vậy mọi lượt tăng online (do người
-# thật vào hoặc do baseline dao động) đều phản ánh vào tổng lượt truy cập.
-last_online_count = None
 
 def _prune_sessions():
     cutoff = time.time() - PRESENCE_TIMEOUT
@@ -291,7 +258,7 @@ def health():
 def presence_ping():
     """Heartbeat từ frontend (gọi định kỳ + khi rời trang qua sendBeacon).
     Trả về số người đang online / đang nghe nhạc / tổng lượt truy cập."""
-    global visit_total, last_online_count
+    global visit_total
     data = request.get_json(silent=True) or {}
     session_id = (data.get("session_id") or "").strip()
     if not session_id:
@@ -302,25 +269,16 @@ def presence_ping():
             online_sessions.pop(session_id, None)
         else:
             _prune_sessions()
+            if session_id not in counted_sessions:
+                counted_sessions.add(session_id)
+                visit_total += 1
+                _save_visit_total(visit_total)
             online_sessions[session_id] = {
                 "last_seen": time.time(),
                 "listening": bool(data.get("listening")),
             }
-        real_online    = len(online_sessions)
-        real_listening = sum(1 for v in online_sessions.values() if v["listening"])
-
-    _tick_fake_stats()
-    with fake_stats_lock:
-        online_count    = fake_stats["online"] + real_online
-        listening_count = max(0, fake_stats["online"] - fake_stats["gap"]) + real_listening
-
-    with presence_lock:
-        if last_online_count is None:
-            last_online_count = online_count
-        elif online_count > last_online_count:
-            visit_total += online_count - last_online_count
-            _save_visit_total(visit_total)
-        last_online_count = online_count
+        online_count    = len(online_sessions)
+        listening_count = sum(1 for v in online_sessions.values() if v["listening"])
 
     return jsonify({
         "status": "ok", "online": online_count,
