@@ -1,6 +1,9 @@
 # Secrets - do not commit
 backend/spotify_tokens.json
 
+# Baseline giả lập bộ đếm online/listening — chỉ chạy local/server, không push
+backend/fake_presence.py
+
 # Python
 __pycache__/
 *.pyc

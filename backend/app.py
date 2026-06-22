@@ -208,7 +208,14 @@ PRESENCE_TIMEOUT  = 40   # giây không ping → coi như đã rời trang
 
 presence_lock     = threading.Lock()
 online_sessions   = {}   # session_id -> {"last_seen": ts, "listening": bool}
-counted_sessions  = set()  # session_id đã được tính vào tổng lượt truy cập
+
+# Baseline "giả lập" sống ở module riêng (backend/fake_presence.py, không
+# track trên git — xem .gitignore). Thiếu file này thì coi như baseline = 0,
+# bộ đếm tự fallback về số thật 100%, không lỗi.
+try:
+    import fake_presence
+except ImportError:
+    fake_presence = None
 
 def _load_visit_total():
     if os.path.exists(VISIT_STATS_PATH):
@@ -224,6 +231,12 @@ def _save_visit_total(total):
         json.dump({"total_visits": total}, f)
 
 visit_total = _load_visit_total()
+
+# Tổng lượt truy cập tăng theo mức tăng của số online hiển thị (thật + giả
+# lập gộp lại) — online tăng bao nhiêu thì cộng bấy nhiêu vào tổng, online
+# giảm thì không trừ và không cộng. Nhờ vậy mọi lượt tăng online (do người
+# thật vào hoặc do baseline dao động) đều phản ánh vào tổng lượt truy cập.
+last_online_count = None
 
 def _prune_sessions():
     cutoff = time.time() - PRESENCE_TIMEOUT
@@ -258,7 +271,7 @@ def health():
 def presence_ping():
     """Heartbeat từ frontend (gọi định kỳ + khi rời trang qua sendBeacon).
     Trả về số người đang online / đang nghe nhạc / tổng lượt truy cập."""
-    global visit_total
+    global visit_total, last_online_count
     data = request.get_json(silent=True) or {}
     session_id = (data.get("session_id") or "").strip()
     if not session_id:
@@ -269,16 +282,24 @@ def presence_ping():
             online_sessions.pop(session_id, None)
         else:
             _prune_sessions()
-            if session_id not in counted_sessions:
-                counted_sessions.add(session_id)
-                visit_total += 1
-                _save_visit_total(visit_total)
             online_sessions[session_id] = {
                 "last_seen": time.time(),
                 "listening": bool(data.get("listening")),
             }
-        online_count    = len(online_sessions)
-        listening_count = sum(1 for v in online_sessions.values() if v["listening"])
+        real_online    = len(online_sessions)
+        real_listening = sum(1 for v in online_sessions.values() if v["listening"])
+
+    fake_online, fake_listening = fake_presence.baseline() if fake_presence else (0, 0)
+    online_count    = fake_online + real_online
+    listening_count = fake_listening + real_listening
+
+    with presence_lock:
+        if last_online_count is None:
+            last_online_count = online_count
+        elif online_count > last_online_count:
+            visit_total += online_count - last_online_count
+            _save_visit_total(visit_total)
+        last_online_count = online_count
 
     return jsonify({
         "status": "ok", "online": online_count,
