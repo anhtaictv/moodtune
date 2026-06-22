@@ -30,16 +30,16 @@ html[data-theme="light"]{
   --text:#0f172a;--muted:#475569;--glow:rgba(18,122,62,0.18);
 }
 html[data-theme="light"] body::before{
-  inset:-6%;
+  inset:-10%;
   background:
-    radial-gradient(ellipse 62% 50% at 4% -4%,rgba(255,145,77,.40) 0%,transparent 62%),
-    radial-gradient(ellipse 58% 50% at 102% 6%,rgba(124,106,247,.34) 0%,transparent 60%),
-    radial-gradient(ellipse 65% 55% at 22% 108%,rgba(29,185,84,.28) 0%,transparent 62%),
-    radial-gradient(ellipse 50% 45% at 100% 100%,rgba(255,99,154,.24) 0%,transparent 60%);
+    radial-gradient(ellipse 100% 80% at 4% -4%,rgba(255,145,77,.40) 0%,transparent 62%),
+    radial-gradient(ellipse 95% 78% at 102% 6%,rgba(124,106,247,.34) 0%,transparent 60%),
+    radial-gradient(ellipse 105% 88% at 22% 108%,rgba(29,185,84,.28) 0%,transparent 62%),
+    radial-gradient(ellipse 82% 72% at 100% 100%,rgba(255,99,154,.24) 0%,transparent 60%);
   animation:auroraDrift 26s ease-in-out infinite}
 @keyframes auroraDrift{
   0%,100%{transform:translate(0,0)}
-  50%{transform:translate(4.5%,3.5%)}
+  50%{transform:translate(9%,7%)}
 }
 @media (prefers-reduced-motion:reduce){html[data-theme="light"] body::before{animation:none}}
 html[data-theme="light"] .card,
@@ -347,7 +347,7 @@ audio{width:100%;height:40px}
     <div class="version-list">
       <div class="version-item current">
         <div class="version-item-head"><span class="version-name">v3.8 — Giao diện đa theme</span><span class="version-tag-sm">hiện tại</span></div>
-        <div class="version-desc">Thêm bộ chọn giao diện ngay trong app với 3 theme: <b>Tối · Midnight</b> (mặc định), <b>Sáng · Aurora</b> (nền trắng, sương màu pastel cam-tím-xanh-hồng, card nổi bằng shadow) và <b>Rực rỡ · Sunset</b> (gradient hoàng hôn chuyển động nhẹ, card kính mờ/glass, đổi hẳn tông cam-hồng-vàng) — chọn xong tự nhớ qua <code>localStorage</code>, không nhấp nháy sai theme lúc tải trang. Dọn anti-pattern gradient-text ở logo/heading, chuẩn hoá lại toàn bộ màu chữ/nền để đạt độ tương phản WCAG AA ở cả 3 theme, và sơ đồ tri thức AI (canvas) giờ tự đổi màu tia/bong bóng theo theme đang chọn thay vì hardcode cố định xanh-tím.</div>
+        <div class="version-desc">Thêm bộ chọn giao diện ngay trong app với 3 theme: <b>Tối · Midnight</b> (mặc định), <b>Sáng · Aurora</b> (nền trắng, sương màu pastel cam-tím-xanh-hồng trôi nhẹ liên tục, tự tắt animation khi hệ điều hành bật giảm chuyển động, card nổi bằng shadow) và <b>Rực rỡ · Sunset</b> (gradient hoàng hôn chuyển động nhẹ, card kính mờ/glass, đổi hẳn tông cam-hồng-vàng) — chọn xong tự nhớ qua <code>localStorage</code>, không nhấp nháy sai theme lúc tải trang. Dọn anti-pattern gradient-text ở logo/heading, chuẩn hoá lại toàn bộ màu chữ/nền để đạt độ tương phản WCAG AA ở cả 3 theme, và sơ đồ tri thức AI (canvas) giờ tự đổi màu tia/bong bóng theo theme đang chọn thay vì hardcode cố định xanh-tím.</div>
       </div>
       <div class="version-item">
         <div class="version-item-head"><span class="version-name">v3.7 — Vận hành production ổn định hơn</span></div>
