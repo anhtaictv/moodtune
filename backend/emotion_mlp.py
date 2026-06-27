@@ -42,6 +42,7 @@ Kiến trúc 2 tầng:
 import numpy as np
 import json
 import os
+import random
 import re
 import sys
 import unicodedata
@@ -137,8 +138,48 @@ print(f"[Init] Vocab={VOCAB_SIZE} (+{len(DYNAMIC_VOCAB)} dynamic word, "
 MAX_PHRASE_LEN = max((len(w.split()) for w in VOCAB if " " in w), default=1)
 
 
+# ─── EMOJI → TOKEN ───────────────────────────────────────────────
+# Thay emoji bằng token tiếng Việt trước khi regex strip — không thì emoji
+# bị xoá im lặng dù là tín hiệu cảm xúc rất mạnh trong text online.
+EMOJI_MAP = {
+    # Happy
+    "😄":"vui","😊":"vui","😀":"vui","😃":"vui","😁":"vui","😆":"vui",
+    "😂":"vui","🥳":"vui","🎉":"vui","🤩":"vui","🙂":"vui","☺":"vui",
+    # Sad
+    "😢":"buồn","😭":"khóc","💔":"đau lòng","😞":"buồn",
+    "😔":"buồn","😟":"buồn","🥺":"tủi","😣":"khổ","😿":"buồn",
+    # Romantic
+    "🥰":"yêu","😍":"si mê","💕":"yêu thương","❤":"yêu",
+    "💖":"yêu","💗":"yêu","💓":"yêu","😘":"hôn","💝":"yêu",
+    # Energetic
+    "⚡":"năng động","🔥":"hype","💪":"workout","🏃":"chạy",
+    "🎊":"party","🕺":"nhảy","💃":"nhảy",
+    # Relaxed
+    "😌":"bình yên","🌿":"bình yên","☕":"cà phê",
+    "🍃":"nhẹ nhàng","🌸":"dịu dàng","🫖":"trà","😴":"ngủ",
+    # Lonely
+    "🌙":"cô đơn","🌑":"cô đơn","😶":"im lặng","🥀":"buồn",
+    # Stressed
+    "😰":"lo lắng","😫":"mệt mỏi","😩":"kiệt sức",
+    "😓":"căng thẳng","🤯":"quá tải","😤":"bực mình",
+    # Focused
+    "🎯":"tập trung","📚":"học","💻":"code","📝":"viết","🧠":"deep work",
+    # Nostalgic
+    "🍂":"hoài niệm","📷":"kỷ niệm","🕰":"ngày xưa","📸":"kỷ niệm",
+    # Angry
+    "😡":"tức giận","🤬":"điên tiết","💢":"giận dữ","😠":"bực tức",
+}
+
+
+def _expand_emojis(text):
+    for emoji, token in EMOJI_MAP.items():
+        text = text.replace(emoji, f" {token} ")
+    return text
+
+
 # ─── TIỀN XỬ LÝ ─────────────────────────────────────────────────
 def preprocess(text):
+    text = _expand_emojis(text)
     # Chuẩn hoá NFC: nếu input dùng Unicode tổ hợp dấu rời (NFD — hay gặp khi
     # copy từ một số nguồn/app khác nhau), dấu câu sẽ là ký tự combining mark
     # riêng (Mn) và bị regex dưới đây xoá mất vì whitelist chỉ liệt kê ký tự
@@ -154,6 +195,22 @@ def preprocess(text):
 # "chẳng bao giờ"). NEGATION_MAX_LEN = số từ dài nhất trong các cụm đó,
 # dùng để giới hạn cửa sổ quét lùi trong _is_negated().
 NEGATION_MAX_LEN = max(len(p.split()) for p in NEGATIONS)
+
+# Phủ định tu từ: "X gì chứ/đâu/vậy/nữa" — người nói phủ nhận cảm xúc bằng
+# câu hỏi tu từ thay vì "không X" tường minh. Rule scorer cần bắt pattern này
+# riêng vì _is_negated() chỉ quét về phía TRÁI (prefix negation), còn phủ
+# định tu từ lại nằm về phía PHẢI của từ cảm xúc.
+RHETORICAL_NEG_MARKERS = frozenset({"chứ", "đâu", "vậy", "nữa"})
+
+
+def _is_rhetorically_negated(words, idx, length=1):
+    """True nếu cụm words[idx:idx+length] bị phủ định bởi pattern
+    '(cụm) + gì + (chứ|đâu|vậy|nữa)' ngay sau đó."""
+    end = idx + length
+    if end < len(words) and words[end] == "gì":
+        return end + 1 >= len(words) or words[end + 1] in RHETORICAL_NEG_MARKERS
+    return False
+
 
 # Độ dài cụm dài nhất trong LEXICON (v4.0 - Model 3): trước đây rule_score()
 # chỉ thử ghép đúng 2 từ liền kề (bigram-only) nên các cụm cảm xúc dài hơn
@@ -188,15 +245,15 @@ def rule_score(text):
     for length in range(2, MAX_LEXICON_PHRASE_LEN + 1):
         for i in range(len(words) - length + 1):
             phrase = " ".join(words[i:i+length])
-            negated = _is_negated(words, i)
+            negated = _is_negated(words, i) or _is_rhetorically_negated(words, i, length)
             for ei, emo in enumerate(EMOTIONS):
                 if phrase in LEXICON[emo]:
                     val = LEXICON[emo][phrase] * 1.5  # phrase boost (giữ hệ số bigram cũ)
                     scores[ei] += (-0.6 * val) if negated else val
 
-    # Unigram + xử lý phủ định
+    # Unigram + xử lý phủ định (prefix và tu từ "X gì chứ")
     for i, w in enumerate(words):
-        negated = _is_negated(words, i)
+        negated = _is_negated(words, i) or _is_rhetorically_negated(words, i)
         for ei, emo in enumerate(EMOTIONS):
             if w in LEXICON[emo]:
                 val = LEXICON[emo][w]
@@ -492,10 +549,54 @@ class AttentionMLP:
         d = np.load(path + ".npz")
         if "E" not in d.files:
             return False  # định dạng cũ (BoW + MLP), không tương thích
+        # Khi đổi kiến trúc (d hoặc hidden thay đổi), bỏ qua weights cũ thay
+        # vì crash — engine sẽ pretrain lại từ SEED_DATA + replay buffer.
+        if d["E"].shape[1] != self.d or d["W1"].shape[1] != self.hidden:
+            print(f"[Load] Kiến trúc thay đổi (saved d={d['E'].shape[1]}/h={d['W1'].shape[1]}, "
+                  f"current d={self.d}/h={self.hidden}) — bỏ qua weights cũ, pretrain lại.")
+            return False
         self.E, self.Wq, self.Wk, self.Wv = d["E"], d["Wq"], d["Wk"], d["Wv"]
         self.W1, self.b1, self.W2, self.b2 = d["W1"], d["b1"], d["W2"], d["b2"]
         self.d = self.E.shape[1]
         return True
+
+
+# ─── CONTEXTUAL BOOST — sad / lonely / nostalgic disambiguation ──
+# Ba class này chia sẻ nhiều từ vựng (trống rỗng, nhớ, một mình) nên dễ
+# nhầm lẫn nhau (sad holdout accuracy chỉ 61.3% sau retrain 2026-06-25).
+# Giải pháp: khi câu có từ chỉ thời gian quá khứ rõ ràng → boost nostalgic;
+# khi có từ chỉ cô lập xã hội → boost lonely; không có tín hiệu nào → giữ
+# nguyên để sad/rule scorer tự quyết.
+_IDX_NOSTALGIC = EMOTIONS.index("nostalgic")
+_IDX_LONELY    = EMOTIONS.index("lonely")
+
+NOSTALGIC_TIME_MARKERS = frozenset({
+    "hồi xưa", "ngày xưa", "năm đó", "hồi nhỏ", "hồi bé", "lúc nhỏ",
+    "lúc bé", "ngày ấy", "hồi đó", "ngày trước", "khi xưa", "thuở nhỏ",
+    "thời đó", "lâu lắm rồi", "mấy năm trước", "hồi còn nhỏ",
+})
+LONELY_SOCIAL_MARKERS = frozenset({
+    "không ai", "một mình", "bơ vơ", "lẻ loi", "giữa đám đông",
+    "không có ai", "không ai hiểu", "đơn độc", "cô độc",
+    "không ai quan tâm", "chẳng ai", "chẳng có ai",
+})
+
+
+def _contextual_boost(text, scores):
+    """Tăng nhẹ điểm nostalgic/lonely khi có tín hiệu ngữ cảnh đặc trưng,
+    giúp phân biệt với sad trong các câu có từ vựng chồng lấp."""
+    t = preprocess(text)
+    modified = scores.copy()
+    for m in NOSTALGIC_TIME_MARKERS:
+        if m in t:
+            modified[_IDX_NOSTALGIC] *= 1.3
+            break
+    for m in LONELY_SOCIAL_MARKERS:
+        if m in t:
+            modified[_IDX_LONELY] *= 1.3
+            break
+    total = modified.sum()
+    return modified / total if total > 0 else modified
 
 
 # ─── HYBRID ENGINE ───────────────────────────────────────────────
@@ -505,7 +606,7 @@ class EmotionEngine:
     alpha: trọng số cho rule (giảm dần khi có nhiều feedback → tin MLP hơn).
     """
     def __init__(self, weights_path="weights"):
-        self.mlp = AttentionMLP(lr=0.02, d=32, hidden=64)
+        self.mlp = AttentionMLP(lr=0.02, d=64, hidden=128)
         self.weights_path = weights_path
         self.feedback_count = 0
         self.alpha = 0.85  # ban đầu tin rule nhiều hơn
@@ -534,7 +635,7 @@ class EmotionEngine:
         else:
             # Kiến trúc mới (hoặc lần đầu chạy) -> train lại từ SEED_DATA + replay
             print("[Engine] Khởi tạo kiến trúc Self-Attention mới - pretrain từ SEED_DATA + replay buffer...")
-            data = SEED_DATA + [(t, l) for t, l in self.replay]
+            data = SEED_DATA + NEGATION_AUGMENT_DATA + ANGER_AUGMENT_DATA + SAD_AUGMENT_DATA + ROMANTIC_AUGMENT_DATA + [(t, l) for t, l in self.replay]
             self.pretrain(data, epochs=400)
 
     @property
@@ -567,8 +668,9 @@ class EmotionEngine:
         ids = [tid for _, tid in tokens if tid is not None]
         mlp  = self.mlp.predict(ids)
 
-        # Hybrid blend
+        # Hybrid blend + contextual boost (sad/lonely/nostalgic)
         combined = self.alpha * rule + (1 - self.alpha) * mlp
+        combined = _contextual_boost(text, combined)
         idx = int(np.argmax(combined))
         emo = EMOTIONS[idx]
 
@@ -695,11 +797,38 @@ SEED_DATA = [
     ("tuyệt vời thật sự", 0), ("vui lắm luôn á", 0),
     ("phấn khởi cả ngày", 0), ("cười suốt không thôi", 0),
     ("thích thú lắm nha", 0), ("mừng vui khôn tả", 0),
+    # Trạng thái vui nội tâm — phân biệt rõ với energetic
+    ("tâm trạng tốt quá hôm nay", 0), ("mood vui không hiểu sao", 0),
+    ("mừng rỡ khi nghe tin tốt", 0), ("phấn chấn lên rồi", 0),
+    ("hài lòng với cuộc sống này", 0), ("vui mừng khôn xiết", 0),
+    ("toại nguyện với những gì đang có", 0), ("nhẹ nhõm sau khi xong việc", 0),
+    ("tươi tắn cả ngày hôm nay", 0), ("rạng ngời khi gặp điều tốt", 0),
+    ("niềm vui nho nhỏ thật sự", 0), ("sướng rơn khi nghe tin vui", 0),
+    ("thỏa mãn với kết quả đạt được", 0), ("vui bụng cả ngày rồi", 0),
 
     ("buồn lắm không muốn làm gì", 1), ("khóc cả đêm rồi", 1),
     ("đau lòng vô cùng", 1), ("chán nản thất vọng", 1),
     ("mệt mỏi và tủi thân", 1), ("tan vỡ rồi còn gì nữa", 1),
     ("không muốn sống tiếp", 1), ("tuyệt vọng hoàn toàn", 1),
+    # Buồn im lặng / resignation — dạng ít được train nhất
+    ("ngậm ngùi nhìn mọi thứ trôi qua", 1), ("chạnh lòng không biết nói sao", 1),
+    ("u sầu cả ngày không muốn nói chuyện", 1), ("không thiết gì nữa hết", 1),
+    ("buông xuôi rồi không cố nữa", 1), ("vỡ mộng hoàn toàn rồi", 1),
+    ("hụt hẫng khi mọi thứ không như kỳ vọng", 1), ("không muốn gặp ai hết", 1),
+    ("thổn thức không biết làm sao", 1), ("nghẹn ngào không nói được gì", 1),
+    ("đau đáu mãi không nguôi", 1), ("chẳng thiết làm gì cả", 1),
+    ("mặc kệ hết rồi không quan tâm nữa", 1), ("cay mắt mà không khóc được", 1),
+    # Buồn mất mát / lặng lẽ nội tâm — dạng khó nhận diện nhất
+    ("ngồi một mình nhìn mưa lòng nặng trĩu", 1),
+    ("thất vọng về chính mình quá nhiều", 1),
+    ("không còn hy vọng vào bất cứ điều gì nữa", 1),
+    ("đêm nay lòng buồn không hiểu vì sao", 1),
+    ("nhớ người đó mà buồn thắt lòng", 1),
+    ("mất đi thứ quan trọng không lấy lại được", 1),
+    ("chẳng ai biết tôi đang buồn đến thế nào", 1),
+    ("tự trách mình mãi vì sai lầm đó", 1),
+    ("lòng trống rỗng không biết điền gì vào", 1),
+    ("khóc mà không biết lý do tại sao", 1),
 
     ("đang yêu người đó lắm", 2), ("nhớ người yêu quá", 2),
     ("tim đập nhanh mỗi khi gặp", 2), ("lãng mạn tối nay", 2),
@@ -747,6 +876,236 @@ SEED_DATA = [
     ("bực bội và ức chế cả ngày", 9), ("giận dữ vì bị xúc phạm và khinh thường", 9),
     ("quá vô lý tôi không chịu được nữa", 9), ("cáu tiết vì sự bất công này", 9),
 ]
+
+
+# ─── PHỦ ĐỊNH "VUI" -> SAD (v4.1) ────────────────────────────────
+# feedback_log.jsonl thực tế chỉ có ~4 mẫu phủ định trực tiếp "vui" (->
+# sad, vd "chẳng vui hơn là bao", "không được vui cho lắm") - quá ít để
+# MLP tổng quát hoá PATTERN "phủ định + từ tích cực -> sad" sang biến thể
+# câu chữ mới: câu "chẳng vui vẻ gì cả" (chưa từng thấy nguyên văn) vẫn bị
+# đoán "happy" vì rule_score() đúng nhưng bị np.maximum(...,0) clip về
+# uniform khi phủ định hết điểm (xem rule_score), còn MLP tự nó chưa học
+# pattern này. Sinh thêm biến thể bằng template x từ x phủ định x hậu tố
+# để MLP thấy nhiều cách diễn đạt khác nhau của CÙNG một pattern, thay vì
+# chỉ nhớ vài câu cụ thể.
+#
+# v4.1.1: bản đầu chỉ có template câu DÀI ("hôm nay tôi không vui...") nên
+# sau khi train, 2 mẫu production THẬT vốn đã đúng từ trước ("Không vui",
+# "Không được vui cho lắm" - dạng NGẮN trần trụi 2-5 từ) lại bị đoán sai
+# thành happy - model học pattern phủ định trong NGỮ CẢNH câu dài nhưng
+# không tổng quát hoá ngược lại được dạng ngắn (ít token hơn, attention/
+# mean-pool có ít tín hiệu xung quanh để dựa vào). Thêm 2 nhóm sinh BẮT
+# BUỘC (không random-sample, để không bị bỏ sót) phủ kín toàn bộ tổ hợp
+# phủ định x từ tích cực ở dạng ngắn, trước khi mới sinh thêm câu dài đa
+# dạng cho phần còn lại.
+_NEG_WORDS = ["không", "chẳng", "chả", "chưa"]
+_HAPPY_WORDS = ["vui", "vui vẻ", "hạnh phúc", "vui sướng", "phấn khởi",
+                "thích thú", "sướng", "mừng", "vui tươi", "yêu đời"]
+_NEG_SUFFIXES = ["", " lắm", " gì cả", " tí nào", " chút nào", " nổi", " mấy", " đâu"]
+_NEG_TEMPLATES = [
+    "hôm nay tôi {neg} {hw}{suf}",
+    "thật ra tôi {neg} {hw}{suf}",
+    "chuyện đó làm tôi {neg} {hw}{suf}",
+    "dạo này {neg} thấy {hw}{suf}",
+    "cả ngày nay {neg} {hw}{suf}",
+    "trong lòng {neg} {hw}{suf}",
+    "tâm trạng {neg} {hw}{suf}",
+    "{neg} còn {hw} như trước nữa",
+]
+# Dạng NGẮN trần trụi (2-3 từ, giống đúng "Không vui" / "Chẳng vui" thật) -
+# sinh BẮT BUỘC đủ mọi tổ hợp neg x happy_word, không qua random sampling.
+_NEG_BARE_TEMPLATES = ["{neg} {hw}", "{neg} {hw} lắm"]
+# Dạng modal "được...cho lắm" - giống đúng "Không được vui cho lắm" thật.
+_NEG_MODAL_TEMPLATES = ["{neg} được {hw} cho lắm", "{neg} được {hw}"]
+
+
+def _generate_negated_happy_examples(n_diverse=80, seed=7):
+    """Sinh câu phủ định từ tích cực -> nhãn sad. Luôn phủ kín TOÀN BỘ tổ
+    hợp neg x happy_word ở dạng ngắn (bare + modal) trước, rồi mới sinh
+    thêm n_diverse câu dài đa dạng theo template x hậu tố ngẫu nhiên."""
+    label = EMOTIONS.index("sad")
+    examples = []
+    combos = set()
+
+    def add(text):
+        if text not in combos:
+            combos.add(text)
+            examples.append((text, label))
+
+    for neg in _NEG_WORDS:
+        for hw in _HAPPY_WORDS:
+            for tmpl in _NEG_BARE_TEMPLATES + _NEG_MODAL_TEMPLATES:
+                add(tmpl.format(neg=neg, hw=hw))
+
+    rng = random.Random(seed)
+    attempts = 0
+    target = len(examples) + n_diverse
+    while len(examples) < target and attempts < n_diverse * 20:
+        attempts += 1
+        tmpl = rng.choice(_NEG_TEMPLATES)
+        neg = rng.choice(_NEG_WORDS)
+        hw = rng.choice(_HAPPY_WORDS)
+        suf = rng.choice(_NEG_SUFFIXES)
+        add(tmpl.format(neg=neg, hw=hw, suf=suf))
+    return examples
+
+
+NEGATION_AUGMENT_DATA = _generate_negated_happy_examples()
+
+
+# ─── TỨC GIẬN VÌ BỊ ĐỐI XỬ BẤT CÔNG → ANGRY ─────────────────────
+# angry 77.8% trên holdout — bị nhầm với stressed vì cả hai đều negative
+# high-arousal. Sự khác biệt chính: angry = directed outward (tức VÌ ai đó/
+# điều gì), stressed = inward (áp lực, quá tải). Sinh template có chủ thể
+# tức giận cụ thể để MLP học pattern "cause → anger" này.
+_ANGER_CAUSES = [
+    "bị đối xử bất công", "bị xúc phạm", "bị khinh thường",
+    "bị phản bội", "bị ăn hiếp", "bị chà đạp",
+    "sự vô lý này", "cách đối xử đó", "thái độ đó",
+    "bị đổ lỗi oan", "bị nói xấu sau lưng",
+]
+_ANGER_EXPR = [
+    "tức điên người", "phẫn nộ", "giận dữ", "nổi điên",
+    "sôi máu", "bực tức vô cùng", "uất ức", "căm phẫn",
+    "không thể chấp nhận", "tức không chịu được",
+]
+_ANGER_TMPL = [
+    "tôi {expr} vì {cause}",
+    "{cause} khiến tôi {expr}",
+    "thật {expr} vì {cause}",
+    "đang {expr} vì {cause}",
+    "không chịu được vì {cause}",
+    "{cause} thật quá đáng",
+    "cảm thấy {expr} khi {cause}",
+]
+
+
+def _generate_anger_examples(seed=13):
+    label = EMOTIONS.index("angry")
+    examples = []
+    combos = set()
+
+    def add(text):
+        if text not in combos:
+            combos.add(text)
+            examples.append((text, label))
+
+    rng = random.Random(seed)
+    for cause in _ANGER_CAUSES:
+        for expr in _ANGER_EXPR:
+            add(rng.choice(_ANGER_TMPL).format(cause=cause, expr=expr))
+    for expr in _ANGER_EXPR:
+        add(f"{expr} không chịu nổi")
+        add(f"đang {expr} lắm")
+    return examples
+
+
+ANGER_AUGMENT_DATA = _generate_anger_examples()
+
+
+# ─── BUỒN VÌ MẤT MÁT / THẤT BẠI → SAD ──────────────────────────
+# sad 61.3% holdout — bị nhầm sang angry (sau khi thêm ANGER_AUGMENT) và
+# lonely (cùng "một mình"). Sự khác biệt: sad = buồn hướng vào nội tâm
+# (mất mát, thất bại, chia tay) không có tức giận và không cô đơn xã hội.
+# Sinh template nguyên nhân buồn × cảm xúc buồn để MLP học pattern rõ ràng.
+_SAD_CAUSES = [
+    "chia tay rồi", "mất đi người thân", "bị từ chối",
+    "thất bại rồi", "giấc mơ tan vỡ", "mọi thứ sụp đổ",
+    "kết quả không như kỳ vọng", "nỗ lực bao lâu mà vô ích",
+    "mất đi thứ quan trọng", "người đó rời đi rồi",
+    "cố gắng mà không được công nhận", "bị phụ lòng",
+]
+_SAD_EXPR = [
+    "lòng đau nhói", "buồn thắt lòng", "đau lòng lắm",
+    "nước mắt không ngừng", "lòng trống rỗng", "buồn không tả được",
+    "tâm trạng rất tệ", "không thiết làm gì", "chán chường vô cùng",
+    "sụp đổ hoàn toàn", "kiệt sức cả tâm hồn", "nghẹn ngào cả ngày",
+]
+_SAD_TMPL = [
+    "{cause}, {expr}",
+    "{cause} nên {expr}",
+    "cảm thấy {expr} vì {cause}",
+    "{expr} khi nghĩ đến {cause}",
+    "sau khi {cause} tôi {expr}",
+    "{expr} vì {cause} rồi",
+    "tôi {expr} khi {cause}",
+]
+
+
+def _generate_sad_examples(seed=17):
+    label = EMOTIONS.index("sad")
+    examples = []
+    combos = set()
+
+    def add(text):
+        if text not in combos:
+            combos.add(text)
+            examples.append((text, label))
+
+    rng = random.Random(seed)
+    for cause in _SAD_CAUSES:
+        for expr in _SAD_EXPR:
+            add(rng.choice(_SAD_TMPL).format(cause=cause, expr=expr))
+    for expr in _SAD_EXPR:
+        add(f"{expr} quá")
+        add(f"đang {expr}")
+    return examples
+
+
+SAD_AUGMENT_DATA = _generate_sad_examples()
+
+
+# ─── LÃNG MẠN VỀ MỘT NGƯỜI CỤ THỂ → ROMANTIC ───────────────────
+# romantic 50.9% holdout — tệ nhất, không có augmentation data, bị nhầm với
+# happy (vui chung chung), relaxed (êm dịu), nostalgic (nhớ nhung quá khứ).
+# Khác biệt cốt lõi: romantic PHẢI có một người cụ thể (người yêu, crush)
+# đang hiện diện hoặc được nhắc trực tiếp — không phải cảm giác vui/bình yên
+# chung mà không có đối tượng tình cảm.
+_ROMANTIC_PERSONS = [
+    "người yêu", "anh ấy", "cô ấy", "em ấy", "crush",
+    "người đặc biệt đó", "người mình thương", "người ấy",
+    "anh", "em",
+]
+_ROMANTIC_EXPR = [
+    "xao xuyến lắm", "tim đập nhanh", "nhớ nhung da diết",
+    "yêu lắm lắm", "thương vô cùng", "hồi hộp khi gặp",
+    "muốn ở bên mãi", "cảm giác ấm áp lạ lắm",
+    "bất giác mỉm cười khi nghĩ đến", "lòng dịu lại khi có",
+    "ngại ngùng mà hạnh phúc", "nhớ từng nụ cười của",
+]
+_ROMANTIC_TMPL = [
+    "nghĩ đến {person} thấy {expr}",
+    "khi ở bên {person} {expr}",
+    "{expr} mỗi khi gặp {person}",
+    "chỉ cần có {person} bên cạnh là {expr}",
+    "hôm nay gặp {person} thấy {expr}",
+    "{person} nhắn tin mà {expr}",
+    "nhìn {person} cười thấy {expr}",
+    "cùng {person} đi dạo, {expr}",
+]
+
+
+def _generate_romantic_examples(seed=23):
+    label = EMOTIONS.index("romantic")
+    examples = []
+    combos = set()
+
+    def add(text):
+        if text not in combos:
+            combos.add(text)
+            examples.append((text, label))
+
+    rng = random.Random(seed)
+    for person in _ROMANTIC_PERSONS:
+        for expr in _ROMANTIC_EXPR:
+            add(rng.choice(_ROMANTIC_TMPL).format(person=person, expr=expr))
+    for expr in _ROMANTIC_EXPR:
+        add(f"đang {expr} ghê")
+        add(f"sao mà {expr} thế này")
+    return examples
+
+
+ROMANTIC_AUGMENT_DATA = _generate_romantic_examples()
 
 
 # ─── MAIN ────────────────────────────────────────────────────────

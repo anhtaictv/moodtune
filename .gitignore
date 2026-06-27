@@ -20,6 +20,26 @@ backend/audio_cache.json
 
 # Claude Code local settings
 .claude/
+.agents/
+.impeccable/
+skills-lock.json
 
 # Temp tooling used to set up this repo
 .tmp_gh/
+
+# Runtime state (auto-generated, không cần track)
+backend/feedback_log.jsonl
+backend/visit_stats.json
+backend/bandit_state.json
+
+# Weight backups (dùng backend/backups/ thay thế)
+backend/weights_prod_backup_*.npz
+backend/weights_prod_backup_*.json
+backend/weights_feedback_test*
+
+# Temp/check files
+check*.txt
+dist_check.txt
+retrain_*.txt
+debug_*.js
+teach.html

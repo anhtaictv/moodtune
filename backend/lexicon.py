@@ -63,10 +63,13 @@ EMOTION_META = {
 NEGATIONS = {
     # 1 từ
     "không", "chẳng", "chả", "đâu", "chưa", "khỏi", "ko", "k",
+    "hổng",  # phương ngữ Nam: "hổng vui" = "không vui"
     # 2 từ
     "không hề", "chẳng hề", "chả hề", "chưa hề",
     "không phải", "chẳng phải", "chả phải",
     "không có", "đâu có", "có đâu", "đâu phải",
+    "không được", "chẳng được", "chả được",  # modal: "không được vui cho lắm"
+    "hổng có",  # phương ngữ Nam modal
     # 3 từ
     "không bao giờ", "chẳng bao giờ", "chả bao giờ", "chưa bao giờ",
 }
@@ -106,6 +109,18 @@ LEXICON = {
         "gag":2.5, "prank":2.5, "sketch":2.0,
         "silly":2.5, "goofy":2.5, "playful":2.5, "witty":2.5,
         "bông đùa":2.5, "đùa nghịch":2.5, "giỡn":2.5, "chọc":2.0,
+        # Trạng thái vui nội tâm (STATE, phân biệt với energetic=hành động)
+        "tâm trạng tốt":3.0, "mood tốt":3.0, "vui bụng":2.5, "phấn chấn":2.5,
+        "hài lòng":2.5, "toại nguyện":2.5, "thỏa mãn":2.5, "vui mừng":3.0,
+        "mừng rỡ":3.0, "vui sướng":3.0, "sướng rơn":2.5, "nhẹ nhõm":2.5,
+        "tươi tắn":2.5, "rạng ngời":2.5, "tươi vui":2.5, "nở nụ cười":2.5,
+        "niềm vui":3.0, "vui mừng khôn xiết":3.0, "sung sướng":3.0,
+        # Slang 2024-2025 & phương ngữ Nam
+        "siu xịn mịn":3.0, "căng đét":2.5, "đỉnh của chóp":3.0,
+        "siêu đỉnh":3.0, "vui hết nấc":3.0, "vui điên":2.5,
+        "glow up":2.5, "slay":2.5, "vibes":2.0, "peak":2.5,
+        "mắc cười":2.5, "dzui":2.5, "dui":2.0,
+        "thích vl":3.0, "ngon vl":3.0, "đỉnh vl":3.0,
     },
 
     # ── SAD (Buồn bã) ────────────────────────────────────────────
@@ -124,6 +139,26 @@ LEXICON = {
         "nặng lòng":2.5, "nặng nề":2.0, "ảm đạm":2.5,
         "thất bại":2.5, "bỏ cuộc":2.5, "thua":1.0,
         "mưa buồn":2.5, "đêm buồn":2.5, "cô quạnh":2.5,
+        # Phủ định tu từ: "vui gì chứ" — từ chối cảm xúc tích cực → buồn
+        "vui gì chứ":3.0, "vui gì đâu":3.0, "vui sao được":2.5,
+        "vui gì nữa":3.0, "làm sao vui được":2.5, "vui được đâu":2.5,
+        "hạnh phúc gì chứ":2.5, "vui lên được đâu":2.5,
+        # Phủ định ngầm / bất lực / chán nản
+        "thôi rồi":2.5, "đành vậy":2.0, "thế là xong":2.5,
+        "biết sao giờ":2.0, "đời là vậy":1.5, "không còn thiết":2.5,
+        # Buồn im lặng / nội tâm (quiet sadness — hay bị miss)
+        "ngậm ngùi":3.0, "chạnh lòng":2.5, "u sầu":3.0, "u uẩn":2.5,
+        "sụt sùi":3.0, "thổn thức":2.5, "nghẹn ngào":2.5, "nức nở":3.0,
+        "cay mắt":2.5, "nghẹn lời":2.5, "đau đáu":2.5, "bứt rứt":2.0,
+        # Mất động lực / thờ ơ (resignation sadness)
+        "không còn thiết":2.5, "chẳng thiết gì":3.0, "không thiết gì nữa":3.0,
+        "không muốn gặp ai":3.0, "buông xuôi":2.5, "mặc kệ tất cả":2.5,
+        "chẳng muốn gì nữa":2.5, "không còn cảm giác":2.5,
+        # Thất vọng sâu
+        "vỡ mộng":3.0, "hụt hẫng":2.5, "chưng hửng":2.0,
+        "thất vọng về bản thân":3.0, "không như kỳ vọng":2.5,
+        # Slang
+        "não nề":2.5, "quá não":2.0, "low mood":2.5,
     },
 
     # ── ROMANTIC (Lãng mạn) ──────────────────────────────────────
@@ -184,6 +219,9 @@ LEXICON = {
         "nhẹ lòng":2.5, "thanh thản":3.0, "bình thản":2.5,
         "gió":1.5, "nắng nhẹ":2.0, "buổi sáng yên tĩnh":2.5,
         "touch grass":2.0, "nạp lại năng lượng":2.5, "detox":2.0, "chữa lành":2.5,
+        # Slang 2024-2025
+        "chill phết":3.0, "max chill":3.0, "vibe chill":2.5,
+        "chill mode":3.0, "no stress":2.5, "just vibes":2.5,
     },
 
     # ── LONELY (Cô đơn) ──────────────────────────────────────────
@@ -203,6 +241,9 @@ LEXICON = {
         "nhìn mưa":2.0, "nhìn cửa sổ":2.0, "ngồi nhìn":1.8,
         "tâm sự":2.0, "không ai tâm sự":3.0, "giữ trong lòng":2.5,
         "buổi tối":1.5, "đêm tối":2.0, "nửa đêm":2.5,
+        # Phương ngữ Nam + biến thể
+        "hổng có ai":3.0, "thui thủi":2.5, "lủi thủi":2.5,
+        "chẳng có ai quan tâm":3.0, "chẳng ai hỏi thăm":3.0,
     },
 
     # ── STRESSED (Căng thẳng) ────────────────────────────────────
@@ -224,6 +265,10 @@ LEXICON = {
         "thi cử":2.0, "ôn thi":2.0, "sắp thi":2.5,
         "tranh cãi":2.0, "mâu thuẫn":2.5, "xung đột":2.5,
         "quá tải tinh thần":3.0, "không thở được":2.5, "ngộp thở":2.5,
+        # Slang 2024-2025
+        "toxic vl":3.0, "toxic quá":2.5, "drama quá":2.5, "drama vl":3.0,
+        "overthink":2.5, "overthinking":2.5, "ngộp lắm":2.5, "ngộp quá":2.5,
+        "rối não":2.5, "rối bời":2.5,
     },
 
     # ── FOCUSED (Tập trung) ──────────────────────────────────────
@@ -283,5 +328,14 @@ LEXICON = {
         "ai cho phép":2.5, "thái độ":2.0, "xúc phạm":2.5, "khinh thường":2.5,
         "không ngờ":2.0, "thật không ngờ":2.5, "bực bội":2.0,
         "bất công":2.5, "phản bội":2.5,
+        # Tức vì bị đối xử bất công (directed anger — phân biệt với stressed)
+        "ăn hiếp":2.5, "bị chà đạp":3.0, "bị ức hiếp":3.0,
+        "không thể tha thứ":2.5, "quá đáng":2.5, "thật quá đáng":3.0,
+        "tức quá":3.0, "giận sôi người":3.0, "tức không nói được":2.5,
+        "bị đối xử tệ":3.0, "làm tôi tức":3.0, "khiến tôi tức giận":3.0,
+        "uất ức quá":3.0, "căm ghét":3.0, "tức vô cùng":3.0,
+        # Giận dữ rõ ràng (slang)
+        "tức vl":3.0, "giận vl":3.0, "bực vl":3.0,
+        "điên tiết vl":3.0, "tức điên":3.0, "nổi điên vl":3.0,
     },
 }
