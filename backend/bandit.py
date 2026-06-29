@@ -20,13 +20,18 @@ Tối ưu Hybrid Playlist Mixer bằng Reinforcement Learning from User Feedback
 
 import json
 import os
+import time
 import numpy as np
+
+BANDIT_SAVE_INTERVAL = 30  # seconds between deferred saves
 
 
 class ThompsonBandit:
     def __init__(self, state_path):
         self.state_path = state_path
         self.state = {"source": {}, "tags": {}}
+        self._dirty = False
+        self._last_save = 0.0
         self._load()
 
     def _load(self):
@@ -40,8 +45,16 @@ class ThompsonBandit:
                 pass
 
     def save(self):
-        with open(self.state_path, "w", encoding="utf-8") as f:
+        tmp = self.state_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self.state, f, ensure_ascii=False)
+        os.replace(tmp, self.state_path)
+        self._dirty = False
+        self._last_save = time.time()
+
+    def _maybe_save(self):
+        if self._dirty and time.time() - self._last_save >= BANDIT_SAVE_INTERVAL:
+            self.save()
 
     # ─── SOURCE BANDIT (Online vs Local) ─────────────────────────
     def _source_arms(self, emotion):
@@ -79,7 +92,8 @@ class ThompsonBandit:
         else:
             b += 1
         arms[source] = [a, b]
-        self.save()
+        self._dirty = True
+        self._maybe_save()
 
     # ─── TAGS BANDIT (chọn cặp tag Jamendo) ──────────────────────
     def _tag_arms(self, emotion, n_options):
@@ -105,7 +119,8 @@ class ThompsonBandit:
         else:
             b += 1
         arms[str(tag_idx)] = [a, b]
-        self.save()
+        self._dirty = True
+        self._maybe_save()
 
     # ─── SUMMARY (hiển thị "gu của bạn" trên UI) ─────────────────
     def get_summary(self, emotion):

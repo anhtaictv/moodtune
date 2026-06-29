@@ -19,7 +19,12 @@ from bandit import ThompsonBandit
 import audio_features
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("MOODTUNE_SECRET_KEY", "moodtune_secret_2024")
+_secret_key = os.environ.get("MOODTUNE_SECRET_KEY") or ""
+if not _secret_key:
+    import warnings
+    warnings.warn("[SECURITY] MOODTUNE_SECRET_KEY not set — using insecure default. Set the env var in production.")
+    _secret_key = "moodtune_secret_2024"
+app.secret_key = _secret_key
 
 # ─── CORS: Cho phép origin của frontend, KHÔNG kèm credentials ────
 # Trước đây code dùng supports_credentials=True + origin "*" → trình duyệt
@@ -51,6 +56,8 @@ GENRE_TAG = {
     "acoustic": "acoustic",
 }
 
+JAMENDO_MAX_RETRIES = 3
+
 def jamendo_search(query=None, tags=None, artist=None, limit=30,
                    offset=0, order="popularity_total"):
     """Search Jamendo API - free full tracks, only needs a client_id."""
@@ -71,8 +78,18 @@ def jamendo_search(query=None, tags=None, artist=None, limit=30,
     params = urllib.parse.urlencode(p)
     req = urllib.request.Request(f"{JAMENDO_API}/tracks?{params}")
 
-    with urllib.request.urlopen(req, timeout=JAMENDO_TIMEOUT) as resp:
-        data = json.loads(resp.read())
+    last_err = None
+    for attempt in range(JAMENDO_MAX_RETRIES):
+        try:
+            with urllib.request.urlopen(req, timeout=JAMENDO_TIMEOUT) as resp:
+                data = json.loads(resp.read())
+            break
+        except (urllib.error.URLError, OSError) as e:
+            last_err = e
+            if attempt < JAMENDO_MAX_RETRIES - 1:
+                time.sleep(2 ** attempt)
+    else:
+        raise last_err
 
     tracks = []
     for item in data.get("results", []):
@@ -158,12 +175,20 @@ def time_to_emotion(hour):
 # ─── AI ENGINE ────────────────────────────────────────────────────
 WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "weights")
 engine = EmotionEngine(WEIGHTS_PATH)
+# AttentionMLP stores forward-pass state as instance attributes (self._ids,
+# self._attn, …) and mutates E/W1/W2 in-place during backward(). Two concurrent
+# requests touching these would corrupt each other's state, so all engine
+# calls are serialised behind this lock before bumping waitress to threads>1.
+_engine_lock = threading.Lock()
 
 # ─── RLUF BANDIT (Thompson Sampling - v3.0) ───────────────────────
 BANDIT_PATH = os.path.join(os.path.dirname(__file__), "bandit_state.json")
 mab = ThompsonBandit(BANDIT_PATH)
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), "feedback_log.jsonl")
+LOG_MAX_SIZE_BYTES = 20 * 1024 * 1024  # rotate at 20 MB
+LOG_ROTATE_CHECK   = 100               # check size every N writes
+_log_write_count   = 0
 
 # ─── RATE LIMIT cho /api/learn (chống spam đầu độc model online learning) ──
 # Online learning dùng 1 model NumPy chung cho mọi người dùng (không phải
@@ -192,12 +217,23 @@ def _is_rate_limited(ip):
         _learn_hits[ip] = hits
         return len(hits) > LEARN_RATE_LIMIT
 
+def _maybe_rotate_log():
+    try:
+        if os.path.getsize(LOG_PATH) > LOG_MAX_SIZE_BYTES:
+            os.replace(LOG_PATH, LOG_PATH + ".1")
+    except OSError:
+        pass
+
 def log_event(event_type, data):
+    global _log_write_count
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(
             {"time": datetime.now().isoformat(), "type": event_type, **data},
             ensure_ascii=False
         ) + "\n")
+    _log_write_count += 1
+    if _log_write_count % LOG_ROTATE_CHECK == 0:
+        _maybe_rotate_log()
 
 # ─── BỘ ĐẾM NGƯỜI DÙNG (online / đang nghe / tổng lượt truy cập) ──
 # Không dùng DB/WebSocket: frontend gọi /api/presence/ping định kỳ
@@ -227,8 +263,10 @@ def _load_visit_total():
     return 0
 
 def _save_visit_total(total):
-    with open(VISIT_STATS_PATH, "w", encoding="utf-8") as f:
+    tmp = VISIT_STATS_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"total_visits": total}, f)
+    os.replace(tmp, VISIT_STATS_PATH)
 
 visit_total = _load_visit_total()
 
@@ -237,9 +275,16 @@ visit_total = _load_visit_total()
 # giảm thì không trừ và không cộng. Nhờ vậy mọi lượt tăng online (do người
 # thật vào hoặc do baseline dao động) đều phản ánh vào tổng lượt truy cập.
 last_online_count = None
+_last_prune_time  = 0.0
+PRUNE_INTERVAL    = 10  # seconds between expensive session scans
 
 def _prune_sessions():
-    cutoff = time.time() - PRESENCE_TIMEOUT
+    global _last_prune_time
+    now = time.time()
+    if now - _last_prune_time < PRUNE_INTERVAL:
+        return
+    _last_prune_time = now
+    cutoff = now - PRESENCE_TIMEOUT
     for sid in [s for s, v in online_sessions.items() if v["last_seen"] < cutoff]:
         online_sessions.pop(sid, None)
 
@@ -247,7 +292,7 @@ def _prune_sessions():
 
 @app.route("/api/health")
 def health():
-    return jsonify({
+    resp = jsonify({
         "status": "ok",
         "model": "EmotionMLP-Hybrid",
         "music_api": "jamendo_free",
@@ -266,6 +311,8 @@ def health():
             "l2":          round(engine.mlp.l2, 6),
         },
     })
+    resp.headers["Cache-Control"] = "public, max-age=30"
+    return resp
 
 @app.route("/api/presence/ping", methods=["POST"])
 def presence_ping():
@@ -277,6 +324,7 @@ def presence_ping():
     if not session_id:
         return jsonify({"error": "session_id required"}), 400
 
+    fake_online, fake_listening = fake_presence.baseline() if fake_presence else (0, 0)
     with presence_lock:
         if data.get("leaving"):
             online_sessions.pop(session_id, None)
@@ -288,12 +336,8 @@ def presence_ping():
             }
         real_online    = len(online_sessions)
         real_listening = sum(1 for v in online_sessions.values() if v["listening"])
-
-    fake_online, fake_listening = fake_presence.baseline() if fake_presence else (0, 0)
-    online_count    = fake_online + real_online
-    listening_count = fake_listening + real_listening
-
-    with presence_lock:
+        online_count    = fake_online + real_online
+        listening_count = fake_listening + real_listening
         if last_online_count is None:
             last_online_count = online_count
         elif online_count > last_online_count:
@@ -306,13 +350,18 @@ def presence_ping():
         "listening": listening_count, "total_visits": visit_total,
     })
 
+TEXT_MAX_LEN = 1000
+
 @app.route("/api/predict", methods=["POST"])
 def predict():
     data = request.get_json()
     text = (data or {}).get("text", "").strip()
     if not text:
         return jsonify({"error": "text required"}), 400
-    result = engine.predict(text)
+    if len(text) > TEXT_MAX_LEN:
+        return jsonify({"error": f"text too long (max {TEXT_MAX_LEN} chars)"}), 400
+    with _engine_lock:
+        result = engine.predict(text)
     scores_list = sorted(
         [{"emotion": e, "label": EMOTION_META[e]["vi"],
           "emoji": EMOTION_META[e]["emoji"], "score": result["all_scores"][e],
@@ -345,9 +394,12 @@ def learn():
     correct = (data or {}).get("correct_emotion", "").strip()
     if not text or not correct:
         return jsonify({"error": "text and correct_emotion required"}), 400
+    if len(text) > TEXT_MAX_LEN:
+        return jsonify({"error": f"text too long (max {TEXT_MAX_LEN} chars)"}), 400
     if correct not in EMOTIONS:
         return jsonify({"error": f"Unknown emotion: {correct}"}), 400
-    engine.learn(text, correct, steps=30)
+    with _engine_lock:
+        engine.learn(text, correct, steps=30)
     log_event("feedback", {"text": text, "correct": correct,
                            "feedback_count": engine.feedback_count})
     return jsonify({
@@ -376,8 +428,17 @@ def predict_batch():
     log_event("predict_batch", {"count": len(results)})
     return jsonify({"results": results})
 
+_stats_cache     = {"data": None, "time": 0.0}
+STATS_CACHE_TTL  = 60  # seconds
+
 @app.route("/api/stats")
 def stats():
+    now = time.time()
+    if _stats_cache["data"] and now - _stats_cache["time"] < STATS_CACHE_TTL:
+        resp = jsonify(_stats_cache["data"])
+        resp.headers["Cache-Control"] = f"public, max-age={STATS_CACHE_TTL}"
+        return resp
+
     s = {"total_predicts": 0, "total_feedback": 0,
          "emotion_counts": {e: 0 for e in EMOTIONS}}
     if os.path.exists(LOG_PATH):
@@ -395,8 +456,13 @@ def stats():
                         s["total_feedback"] += 1
                 except Exception:
                     pass
-    return jsonify({**s, "model_alpha": engine.alpha,
-                    "feedback_count": engine.feedback_count})
+    result = {**s, "model_alpha": engine.alpha,
+              "feedback_count": engine.feedback_count}
+    _stats_cache["data"] = result
+    _stats_cache["time"] = now
+    resp = jsonify(result)
+    resp.headers["Cache-Control"] = f"public, max-age={STATS_CACHE_TTL}"
+    return resp
 
 # ─── JAMENDO MUSIC SEARCH (NO USER LOGIN) ────────────────────────
 
@@ -445,11 +511,10 @@ def music_search():
         })
     except urllib.error.URLError as e:
         print(f"[Jamendo] Network error: {e}")
-        return jsonify({"error": "jamendo_unreachable",
-                        "detail": str(e), "tracks": []}), 502
+        return jsonify({"error": "jamendo_unreachable", "tracks": []}), 502
     except Exception as e:
         print(f"[Jamendo] Search error: {e}")
-        return jsonify({"error": str(e), "tracks": []}), 500
+        return jsonify({"error": "internal_error", "tracks": []}), 500
 
 # ─── RLUF: TỈ LỆ TRỘN NHẠC ONLINE/LOCAL (Ý tưởng 1, nangcap2.txt) ─
 
@@ -478,7 +543,11 @@ def track_event():
     if etype not in ("play", "like", "dislike", "next"):
         return jsonify({"error": "invalid type"}), 400
     emotion = d.get("emotion", "")
+    if emotion and emotion not in EMOTIONS:
+        return jsonify({"error": "invalid emotion"}), 400
     source  = d.get("source", "")
+    if source and source not in ("online", "local"):
+        return jsonify({"error": "invalid source"}), 400
     tag_arm = d.get("tag_arm")
     log_event("track_" + etype, {
         "track_id": d.get("track_id", ""),
@@ -553,11 +622,10 @@ def recommend():
         })
     except urllib.error.URLError as e:
         print(f"[Recommend] Network error: {e}")
-        return jsonify({"error": "jamendo_unreachable",
-                        "detail": str(e), "tracks": []}), 502
+        return jsonify({"error": "jamendo_unreachable", "tracks": []}), 502
     except Exception as e:
         print(f"[Recommend] error: {e}")
-        return jsonify({"error": str(e), "tracks": []}), 500
+        return jsonify({"error": "internal_error", "tracks": []}), 500
 
 @app.route("/api/time-suggestion")
 def time_suggestion():
@@ -580,10 +648,7 @@ if __name__ == "__main__":
     print(f" Vocab: {engine.vocab_size} | Embed: {engine.mlp.d} | Hidden: {engine.mlp.W1.shape[1]} (Self-Attention)")
     print(f" Music API: Jamendo (Free - Full Tracks)")
     print("=" * 50)
-    # waitress thay cho Flask dev server (dev server tự cảnh báo "không dùng
-    # cho production"). threads=1: AttentionMLP/EmotionEngine là NumPy thuần
-    # tự viết, mutate self.E/self._ids/... trực tiếp không có lock -> 2
-    # request /api/learn xử lý đồng thời sẽ ghi đè state lẫn nhau. Giữ
-    # threads=1 để hành vi giống dev server cũ (an toàn), chỉ đổi server.
+    # waitress thay cho Flask dev server. threads=4: engine calls are now
+    # serialised behind _engine_lock so concurrent requests are safe.
     from waitress import serve
-    serve(app, host="0.0.0.0", port=5005, threads=1)
+    serve(app, host="0.0.0.0", port=5005, threads=4)

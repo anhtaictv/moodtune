@@ -719,7 +719,7 @@ async function analyze() {
     // Hiện đủ 12 cảm xúc (trước chỉ hiện 6 → mất nửa thông tin)
     document.getElementById('score-bars').innerHTML = data.scores.map(s=>`
       <div class="score-row">
-        <span class="score-name">${s.emoji} ${s.label}</span>
+        <span class="score-name">${escapeHtml(s.emoji)} ${escapeHtml(s.label)}</span>
         <div class="score-bar-wrap"><div class="score-bar-fill" style="width:${(s.score*100).toFixed(1)}%"></div></div>
         <span class="score-val">${(s.score*100).toFixed(0)}%</span>
       </div>`).join('');
